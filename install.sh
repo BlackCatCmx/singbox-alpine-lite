@@ -3,7 +3,7 @@
 set -eu
 umask 077
 
-APP_VERSION='0.1.0'
+APP_VERSION='0.2.0'
 SING_BOX_SERIES='1.13'
 ALPINE_EDGE_COMMUNITY='https://dl-cdn.alpinelinux.org/alpine/edge/community'
 DEFAULT_SNI='addons.mozilla.org'
@@ -21,6 +21,8 @@ LINKS_FILE="${WORK_DIR}/links.txt"
 SERVICE_FILE='/etc/init.d/sing-box'
 MANAGE_FILE="${APP_DIR}/manage.sh"
 FIREWALL_FILE="${APP_DIR}/firewall.sh"
+APK_REPOSITORIES_FILE="${APP_DIR}/repositories"
+SING_BOX_APK="${APP_DIR}/sing-box.apk"
 
 PROTOCOLS_RAW=''
 VLESS_PORT=''
@@ -346,17 +348,6 @@ if [ ! -e "$OWNER_FILE" ]; then
     chmod 0600 "$OWNER_FILE"
 fi
 
-info "Installing sing-box ${SING_BOX_SERIES}.x from Alpine edge/community..."
-apk add --no-cache --repository "$ALPINE_EDGE_COMMUNITY" "sing-box~${SING_BOX_SERIES}" || die 'Failed to install sing-box from Alpine edge/community'
-has_command sing-box || die 'The Alpine sing-box package did not install its binary'
-
-binary_version=$($BINARY_PATH version 2>&1 | sed -n '1p') || die 'sing-box binary cannot execute'
-SING_BOX_VERSION=$(printf '%s\n' "$binary_version" | awk '/^sing-box version /{print $3; exit}')
-case "$SING_BOX_VERSION" in
-    "${SING_BOX_SERIES}."*) ;;
-    *) die "Unexpected sing-box version: $binary_version" ;;
-esac
-
 if [ "$HY2_ENABLED" -eq 1 ] && ! has_command openssl; then
     info 'Installing openssl for Hysteria2 certificate generation...'
     apk add --no-cache openssl || die 'Failed to install openssl'
@@ -388,6 +379,44 @@ fi
 if [ -n "$HY2_HOP_RANGE" ] && ! has_command ip6tables; then
     warn 'ip6tables is unavailable; IPv6 port hopping will not work.'
 fi
+
+info "Resolving sing-box ${SING_BOX_SERIES}.x from Alpine edge/community..."
+cat /etc/apk/repositories > "$APK_REPOSITORIES_FILE"
+printf '%s\n' "$ALPINE_EDGE_COMMUNITY" >> "$APK_REPOSITORIES_FILE"
+apk --repositories-file "$APK_REPOSITORIES_FILE" update || die 'Failed to update Alpine repository indexes'
+
+package_version=$(apk --repositories-file "$APK_REPOSITORIES_FILE" query --fields version sing-box |
+    awk '/^Version: /{print $2; exit}')
+case "$package_version" in
+    "${SING_BOX_SERIES}."*-r*) ;;
+    *) die "Alpine edge/community did not provide sing-box ${SING_BOX_SERIES}.x" ;;
+esac
+
+package_url=$(apk --repositories-file "$APK_REPOSITORIES_FILE" fetch --url --recursive "sing-box=${package_version}" |
+    awk '/\/sing-box-[^/]+\.apk$/{print; exit}')
+[ -n "$package_url" ] || die 'Failed to resolve the Alpine sing-box package URL'
+
+info "Downloading Alpine sing-box ${package_version} package..."
+if has_command wget; then
+    wget -qO "$SING_BOX_APK" "$package_url" || die 'Failed to download the Alpine sing-box package'
+else
+    curl -fsSL "$package_url" -o "$SING_BOX_APK" || die 'Failed to download the Alpine sing-box package'
+fi
+sync
+apk verify "$SING_BOX_APK" || die 'Alpine package signature or integrity verification failed'
+tar -tzf "$SING_BOX_APK" | grep -qx 'usr/bin/sing-box' || die 'The Alpine package does not contain usr/bin/sing-box'
+
+info 'Extracting the verified sing-box binary with the low-memory path...'
+tar -xzf "$SING_BOX_APK" -C / usr/bin/sing-box || die 'Failed to extract the sing-box binary'
+chmod 0755 "$BINARY_PATH"
+has_command sing-box || die 'The Alpine sing-box binary was not installed'
+
+binary_version=$($BINARY_PATH version 2>&1 | sed -n '1p') || die 'sing-box binary cannot execute'
+SING_BOX_VERSION=$(printf '%s\n' "$binary_version" | awk '/^sing-box version /{print $3; exit}')
+case "$SING_BOX_VERSION" in
+    "${SING_BOX_SERIES}."*) ;;
+    *) die "Unexpected sing-box version: $binary_version" ;;
+esac
 
 UUID=''
 REALITY_PRIVATE=''

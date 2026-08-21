@@ -2,7 +2,7 @@
 
 面向 64 MiB 低内存 Alpine Linux VPS 的轻量 sing-box 安装器。
 
-本项目不下载 sing-box 官方全功能 musl Release，而是通过 Alpine `edge/community` 安装由 Alpine 官方维护和签名的软件包。该软件包去掉了 Naive outbound、CCM 和 OCM 等当前服务端不需要的构建功能，amd64 二进制约 47 MiB；官方 1.13.19 musl 二进制约 66 MiB。
+本项目不下载 sing-box 官方全功能 musl Release，而是使用 Alpine `edge/community` 中由 Alpine 官方维护和签名的软件包。该软件包去掉了 Naive outbound、CCM 和 OCM 等当前服务端不需要的构建功能，amd64 二进制约 47 MiB；官方 1.13.19 musl 二进制约 66 MiB。
 
 当前支持：
 
@@ -16,7 +16,7 @@
 ## 设计目标
 
 - 只运行一个 sing-box 进程；
-- 通过 Alpine `apk` 校验仓库签名，不自行维护第三方二进制镜像；
+- 通过 Alpine `apk verify` 校验官方软件包签名和完整性，不自行维护第三方二进制镜像；
 - 使用 Alpine 的裁剪构建，避免 Naive/Cronet 增加二进制体积；
 - 不安装面板、Web 服务、数据库、WARP、Argo 或常驻监控脚本；
 - 凭据和节点链接仅保存在服务器 `/etc/sing-box`；
@@ -64,13 +64,15 @@ sh /root/singbox-alpine-lite-install.sh
 
 ## Alpine 软件包来源
 
-sing-box 从以下官方仓库安装：
+sing-box 来自以下官方仓库：
 
 ```text
 https://dl-cdn.alpinelinux.org/alpine/edge/community
 ```
 
-安装器通过单次 `apk add --repository` 选择该仓库，不会把整台系统永久切换到 Alpine edge，也不会修改 `/etc/apk/repositories`。
+安装器使用临时仓库清单解析当前 `1.13.x` 包的官方地址，不会把整台系统永久切换到 Alpine edge，也不会修改 `/etc/apk/repositories`。下载后先由 `apk verify` 校验 Alpine 签名和文件完整性，再通过 BusyBox `tar` 只流式解出 `usr/bin/sing-box`。
+
+没有直接使用 `apk add sing-box`：实机 64 MiB cgroup 测试表明，apk-tools 3 的安装事务会在解包 47 MiB 二进制时触发 OOM。下载、验签和定向流式解压不会触发该问题。已验签的原始 APK 保留在 `/usr/local/libexec/singbox-alpine-lite/sing-box.apk`。
 
 Hysteria2 生成证书需要 `openssl`。只有系统缺少它时才会从当前 Alpine 系统仓库安装。
 
