@@ -1,0 +1,18 @@
+# Local development
+temp/
+.cache/
+.venv/
+
+# Secrets and generated runtime data
+.env
+*.key
+*.pem
+state.env
+links.txt
+config.json
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
