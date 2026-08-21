@@ -70,9 +70,9 @@ sing-box 来自以下官方仓库：
 https://dl-cdn.alpinelinux.org/alpine/edge/community
 ```
 
-安装器使用临时仓库清单解析当前 `1.13.x` 包的官方地址，不会把整台系统永久切换到 Alpine edge，也不会修改 `/etc/apk/repositories`。下载后先由 `apk verify` 校验 Alpine 签名和文件完整性，再通过 BusyBox `tar` 只流式解出 `usr/bin/sing-box`。
+安装器使用临时仓库清单解析当前 `1.13.x` 包的官方地址，不会把整台系统永久切换到 Alpine edge，也不会修改 `/etc/apk/repositories`。同一条下载流通过命名管道同时交给 `apk verify` 验签和 BusyBox `tar` 解压，只有两者都成功才会原子替换 `/usr/bin/sing-box`。
 
-没有直接使用 `apk add sing-box`：实机 64 MiB cgroup 测试表明，apk-tools 3 的安装事务会在解包 47 MiB 二进制时触发 OOM。下载、验签和定向流式解压不会触发该问题。已验签的原始 APK 保留在 `/usr/local/libexec/singbox-alpine-lite/sing-box.apk`。
+没有直接使用 `apk add sing-box`：实机 64 MiB cgroup 测试表明，apk-tools 3 的安装事务会在解包 47 MiB 二进制时触发 OOM。流式下载、验签和定向解压不会把约 17 MiB 的 APK 留在磁盘和页缓存中。
 
 Hysteria2 生成证书需要 `openssl`。只有系统缺少它时才会从当前 Alpine 系统仓库安装。
 

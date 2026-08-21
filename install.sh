@@ -22,7 +22,8 @@ SERVICE_FILE='/etc/init.d/sing-box'
 MANAGE_FILE="${APP_DIR}/manage.sh"
 FIREWALL_FILE="${APP_DIR}/firewall.sh"
 APK_REPOSITORIES_FILE="${APP_DIR}/repositories"
-SING_BOX_APK="${APP_DIR}/sing-box.apk"
+VERIFY_PIPE="${APP_DIR}/package.verify.pipe"
+STAGED_BINARY="${BINARY_PATH}.new"
 
 PROTOCOLS_RAW=''
 VLESS_PORT=''
@@ -395,18 +396,32 @@ esac
 package_url="${ALPINE_EDGE_COMMUNITY}/$(apk --print-arch)/sing-box-${package_version}.apk"
 
 info "Downloading Alpine sing-box ${package_version} package..."
-if has_command wget; then
-    wget -qO "$SING_BOX_APK" "$package_url" || die 'Failed to download the Alpine sing-box package'
-else
-    curl -fsSL "$package_url" -o "$SING_BOX_APK" || die 'Failed to download the Alpine sing-box package'
+if [ ! -p "$VERIFY_PIPE" ]; then
+    [ ! -e "$VERIFY_PIPE" ] || die "Verification pipe path is occupied: $VERIFY_PIPE"
+    mkfifo "$VERIFY_PIPE"
 fi
-sync
-apk verify "$SING_BOX_APK" || die 'Alpine package signature or integrity verification failed'
-tar -tzf "$SING_BOX_APK" | grep -qx 'usr/bin/sing-box' || die 'The Alpine package does not contain usr/bin/sing-box'
 
-info 'Extracting the verified sing-box binary with the low-memory path...'
-tar -xzf "$SING_BOX_APK" -C / usr/bin/sing-box || die 'Failed to extract the sing-box binary'
-chmod 0755 "$BINARY_PATH"
+apk verify "$VERIFY_PIPE" &
+verify_pid=$!
+stream_result=0
+if has_command wget; then
+    wget -qO- "$package_url" |
+        tee "$VERIFY_PIPE" |
+        tar -xzOf - usr/bin/sing-box > "$STAGED_BINARY" || stream_result=$?
+else
+    curl -fsSL "$package_url" |
+        tee "$VERIFY_PIPE" |
+        tar -xzOf - usr/bin/sing-box > "$STAGED_BINARY" || stream_result=$?
+fi
+verify_result=0
+wait "$verify_pid" || verify_result=$?
+[ "$stream_result" -eq 0 ] || die 'Failed to download or extract the Alpine sing-box package'
+[ "$verify_result" -eq 0 ] || die 'Alpine package signature or integrity verification failed'
+[ -s "$STAGED_BINARY" ] || die 'The Alpine package did not provide a sing-box binary'
+
+info 'Installing the verified sing-box binary...'
+chmod 0755 "$STAGED_BINARY"
+mv "$STAGED_BINARY" "$BINARY_PATH"
 has_command sing-box || die 'The Alpine sing-box binary was not installed'
 
 binary_version=$($BINARY_PATH version 2>&1 | sed -n '1p') || die 'sing-box binary cannot execute'
