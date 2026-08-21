@@ -393,7 +393,7 @@ case "$package_version" in
 esac
 
 package_url=$(apk --repositories-file "$APK_REPOSITORIES_FILE" fetch --url --recursive "sing-box=${package_version}" |
-    awk '/\/sing-box-[^/]+\.apk$/{print; exit}')
+    awk '/sing-box-.*[.]apk$/{print; exit}')
 [ -n "$package_url" ] || die 'Failed to resolve the Alpine sing-box package URL'
 
 info "Downloading Alpine sing-box ${package_version} package..."
