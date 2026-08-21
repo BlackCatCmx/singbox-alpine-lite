@@ -392,9 +392,7 @@ case "$package_version" in
     *) die "Alpine edge/community did not provide sing-box ${SING_BOX_SERIES}.x" ;;
 esac
 
-package_url=$(apk --repositories-file "$APK_REPOSITORIES_FILE" fetch --url --recursive "sing-box=${package_version}" |
-    awk '/sing-box-.*[.]apk$/{print; exit}')
-[ -n "$package_url" ] || die 'Failed to resolve the Alpine sing-box package URL'
+package_url="${ALPINE_EDGE_COMMUNITY}/$(apk --print-arch)/sing-box-${package_version}.apk"
 
 info "Downloading Alpine sing-box ${package_version} package..."
 if has_command wget; then
